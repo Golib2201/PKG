@@ -1,0 +1,93 @@
+import streamlit as st
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+st.set_page_config(page_title="МРТ Обработка — Метод 1", layout="wide")
+st.title("Цифровая обработка МРТ-снимков")
+st.write("Вариант задания: **Метод 1** (Построение/эквализация гистограммы + линейное контрастирование)")
+
+# --- АЛГОРИТМЫ ОБРАБОТКИ С КОРРЕКТНЫМ ПРИВЕДЕНИЕМ ТИПОВ ---
+
+def apply_linear_contrast(image):
+    """Линейное контрастирование (растяжение гистограммы)"""
+    # Работаем строго в градациях серого для МРТ
+    img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) == 3 else image
+    
+    f_min, f_max = float(np.min(img_gray)), float(np.max(img_gray))
+    if f_max == f_min:
+        return img_gray
+        
+    # Формула растяжения диапазона
+    contrast_img = ((img_gray - f_min) / (f_max - f_min) * 255.0)
+    return np.clip(contrast_img, 0, 255).astype(np.uint8)
+
+
+def apply_histogram_equalization(image):
+    """Эквализация гистограммы для улучшения видимости тканей на МРТ"""
+    img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) == 3 else image
+    
+    # Используем адаптивную эквализацию (CLAHE) — она идеальна для медицинских снимков,
+    # так как не пересвечивает картинку, а выравнивает контраст локально.
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+    return clahe.apply(img_gray)
+
+
+def get_hist_plot(image, title="Гистограмма"):
+    """Построение гистограммы распределения интенсивностей"""
+    fig, ax = plt.subplots(figsize=(5, 3))
+    img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) == 3 else image
+    
+    hist = cv2.calcHist([img_gray], [0], None, [256], [0, 256])
+    
+    ax.bar(range(256), hist.ravel(), color='gray', alpha=0.8, width=1.0)
+    ax.set_xlim([0, 255])
+    ax.grid(True, linestyle='--', alpha=0.5)
+    ax.set_title(title, fontsize=10)
+    return fig
+
+# --- ИНТЕРФЕЙС ---
+
+uploaded_file = st.sidebar.file_uploader("Загрузите МРТ снимок", type=["png", "jpg", "jpeg", "tif", "tiff"])
+
+if uploaded_file is not None:
+    # Чтение файла с поддержкой сохранения исходной глубины цвета (Unchanged)
+    file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+    img_raw = cv2.imdecode(file_bytes, cv2.IMREAD_UNCHANGED)
+    
+    # Если изображение 16-битное (часто для МРТ), аккуратно жмем до 8-бит для отображения
+    if img_raw.dtype == np.uint16:
+        img_raw = (img_raw / 256).astype(np.uint8)
+        
+    # Принудительно делаем изображение полутоновым (Grayscale)
+    if len(img_raw.shape) == 3:
+        img_gray = cv2.cvtColor(img_raw, cv2.COLOR_BGR2GRAY)
+    else:
+        img_gray = img_raw
+    
+    mode = st.sidebar.radio(
+        "Выберите метод контрастирования:",
+        ("Исходный снимок МРТ", "Линейное контрастирование", "Адаптивная эквализация")
+    )
+    
+    if mode == "Исходный снимок МРТ":
+        img_res = img_gray
+        st.subheader("🔍 Анализ исходного МРТ снимка")
+    elif mode == "Линейное контрастирование":
+        img_res = apply_linear_contrast(img_gray)
+        st.subheader("🔍 МРТ после линейного контрастирования (растяжения)")
+    elif mode == "Адаптивная эквализация":
+        img_res = apply_histogram_equalization(img_gray)
+        st.subheader("🔍 МРТ после адаптивного выравнивания гистограммы")
+        
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.image(img_gray, caption="Исходный МРТ-снимок", use_container_width=True, channels="GRAY")
+        st.pyplot(get_hist_plot(img_gray, "Гистограмма ДО"))
+        s
+    with col2:
+        st.image(img_res, caption="Обработанный МРТ-снимок", use_container_width=True, channels="GRAY")
+        st.pyplot(get_hist_plot(img_res, "Гистограмма ПОСЛЕ"))
+else:
+    st.info("💡 Пожалуйста, загрузите снимок головного мозга, позвоночника или любой другой МРТ-скан для обработки.")
