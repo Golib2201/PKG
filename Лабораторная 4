@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Лабораторная работа 4: Базовые растровые алгоритмы</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; background-color: #f5f5f5; }
+        .container { display: flex; gap: 20px; }
+        .controls { width: 300px; padding: 15px; background: white; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .canvas-container { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        canvas { border: 1px solid #ccc; cursor: crosshair; }
+        select, button, input { width: 100%; padding: 8px; margin: 8px 0 15px 0; box-sizing: border-box; }
+        label { font-weight: bold; }
+        .log { margin-top: 15px; font-family: monospace; font-size: 12px; max-height: 150px; overflow-y: auto; background: #eee; padding: 5px; }
+    </style>
+</head>
+<body>
+
+<h2>Лабораторная работа 4: Базовые растровые алгоритмы</h2>
+<div class="container">
+    <div class="controls">
+        <label for="algorithm">Алгоритм:</label>
+        <select id="algorithm">
+            <option value="step">Пошаговый алгоритм</option>
+            <option value="dda">Алгоритм ЦДА</option>
+            <option value="bresenham_line">Алгоритм Брезенхема (отрезок)</option>
+            <option value="bresenham_circle">Алгоритм Брезенхема (окружность)</option>
+            <option value="wu">Алгоритм Ву (Wu's Anti-aliasing)</option>
+            <option value="castle_piteway">Алгоритм Кастла-Питвея (дуга)</option>
+        </select>
+
+        <label for="scale">Масштаб (размер пикселя в px):</label>
+        <input type="number" id="scale" value="20" min="5" max="50">
+
+        <button id="clearBtn">Очистить холст</button>
+        
+        <div>
+            <strong>Управление:</strong><br>
+            • Клик 1: Старт (X1, Y1)<br>
+            • Клик 2: Финиш (X2, Y2)<br>
+            <em>Для окружности/дуги: Клик 1 — центр, Клик 2 задает радиус.</em>
+        </div>
+        <div class="log" id="log">Лог координат...</div>
+    </div>
+
+    <div class="canvas-container">
+        <canvas id="rasterCanvas" width="600" height="600"></canvas>
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById('rasterCanvas');
+const ctx = canvas.getContext('2d');
+const algoSelect = document.getElementById('algorithm');
+const scaleInput = document.getElementById('scale');
+const clearBtn = document.getElementById('clearBtn');
+const logDiv = document.getElementById('log');
+
+let PIXEL_SIZE = parseInt(scaleInput.value);
+let points = [];
+
+// Отрисовка координатной сетки
+function drawGrid() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = '#e0e0e0';
+    ctx.lineWidth = 1;
+
+    for (let x = 0; x <= canvas.width; x += PIXEL_SIZE) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+    }
+    for (let y = 0; y <= canvas.height; y += PIXEL_SIZE) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+    }
+}
+
+// Закраска одного пикселя (с учетом прозрачности для алгоритма Ву)
+function drawPixel(x, y, alpha = 1) {
+    if (x < 0 || x >= canvas.width / PIXEL_SIZE || y < 0 || y >= canvas.height / PIXEL_SIZE) return;
+    ctx.fillStyle = `rgba(0, 0, 0, ${alpha})`;
+    ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+}
+
+function log(text) {
+    logDiv.innerHTML += text + '<br>';
+    logDiv.scrollTop = logDiv.scrollHeight;
+}
+
+// === РЕАЛИЗАЦИЯ АЛГОРИТМОВ ===
+
+// 1. Пошаговый алгоритм (Step-by-Step)
+function drawStepByStep(x1, y1, x2, y2) {
+    if (x1 === x2 && y1 === y2) { drawPixel(x1, y1); return; }
+    let dx = x2 - x1;
+    let dy = y2 - y1;
+    
+    if (Math.abs(dx) >= Math.abs(dy)) {
+        let startX = Math.min(x1, x2);
+        let endX = Math.max(x1, x2);
+        let k = dy / dx;
+        let b = y1 - k * x1;
+        for (let x = startX; x <= endX; x++) {
+            let y = Math.round(k * x + b);
+            drawPixel(x, y);
+        }
+    } else {
+        let startY = Math.min(y1, y2);
+        let endY = Math.max(y1, y2);
+        let k = dx / dy;
+        let b = x1 - k * y1;
+        for (let y = startY; y <= endY; y++) {
+            let x = Math.round(k * y + b);
+            drawPixel(x, y);
+        }
+    }
+}
+
+// 2. Цифровой дифференциальный анализатор (ЦДА / DDA)
+function drawDDA(x1, y1, x2, y2) {
+    let dx = x2 - x1;
+    let dy = y2 - y1;
+    let steps = Math.max(Math.abs(dx), Math.abs(dy));
+    if (steps === 0) { drawPixel(x1, y1); return; }
+    
+    let xInc = dx / steps;
+    let yInc = dy / steps;
+    
+    let x = x1;
+    let y = y1;
+    for (let i = 0; i <= steps; i++) {
+        drawPixel(Math.round(x), Math.round(y));
+        x += xInc;
+        y += yInc;
+    }
+}
+
+// 3. Алгоритм Брезенхема (Отрезок)
+function drawBresenhamLine(x1, y1, x2, y2) {
+    let dx = Math.abs(x2 - x1);
+    let dy = Math.abs(y2 - y1);
+    let sx = (x1 < x2) ? 1 : -1;
+    let sy = (y1 < y2) ? 1 : -1;
+    let err = dx - dy;
+
+    while (true) {
+        drawPixel(x1, y1);
+        if (x1 === x2 && y1 === y2) break;
+        let e2 = 2 * err;
+        if (e2 > -dy) { err -= dy; x1 += sx; }
+        if (e2 < dx) { err += dx; y1 += sy; }
+    }
+}
+
+// 4. Алгоритм Брезенхема (Окружность)
+function drawBresenhamCircle(xc, yc, r) {
+    let x = 0;
+    let y = r;
+    let d = 3 - 2 * r;
+    
+    function drawCirclePoints(xc, yc, x, y) {
+        drawPixel(xc + x, yc + y); drawPixel(xc - x, yc + y);
+        drawPixel(xc + x, yc - y); drawPixel(xc - x, yc - y);
+        drawPixel(xc + y, yc + x); drawPixel(xc - y, yc + x);
+        drawPixel(xc + y, yc - x); drawPixel(xc - y, yc - x);
+    }
+
+    drawCirclePoints(xc, yc, x, y);
+    while (y >= x) {
+        x++;
+        if (d > 0) { y--; d = d + 4 * (x - y) + 10; }
+        else { d = d + 4 * x + 6; }
+        drawCirclePoints(xc, yc, x, y);
+    }
+}
+
+// 5. Алгоритм Сглаживания Ву (Wu's Anti-aliasing)
+function drawWuLine(x1, y1, x2, y2) {
+    let steep = Math.abs(y2 - y1) > Math.abs(x2 - x1);
+    if (steep) { [x1, y1] = [y1, x1]; [x2, y2] = [y2, x1]; [x2, y2] = [y2, x2]; /* Swapping syntax helper */ let t; t=x1; x1=y1; y1=t; t=x2; x2=y2; y2=t; }
+    if (x1 > x2) { let t; t=x1; x1=x2; x2=t; t=y1; y1=y2; y2=t; }
+
+    let dx = x2 - x1;
+    let dy = y2 - y1;
+    let gradient = dx === 0 ? 1.0 : dy / dx;
+
+    let xend = Math.round(x1);
+    let yend = y1 + gradient * (xend - x1);
+    let xpxl1 = xend;
+    let ypxl1 = Math.floor(yend);
+    
+    if (steep) { drawPixel(ypxl1, xpxl1, 1); drawPixel(ypxl1 + 1, xpxl1, 0); } 
+    else { drawPixel(xpxl1, ypxl1, 1); drawPixel(xpxl1, ypxl1 + 1, 0); }
+    
+    let intery = yend + gradient;
+    xend = Math.round(x2);
+    let xpxl2 = xend;
+
+    for (let x = xpxl1 + 1; x < xpxl2; x++) {
+        if (steep) {
+            drawPixel(Math.floor(intery), x, 1 - (intery % 1));
+            drawPixel(Math.floor(intery) + 1, x, intery % 1);
+        } else {
+            drawPixel(x, Math.floor(intery), 1 - (intery % 1));
+            drawPixel(x, Math.floor(intery) + 1, intery % 1);
+        }
+        intery += gradient;
+    }
+}
+
+// 6. Алгоритм Кастла-Питвея (Castle-Piteway) для генерации дуг конических сечений
+// Упрощенный целочисленный квадратичный алгоритм для дуги окружности/эллипса в одном октанте
+function drawCastlePitewayArc(xc, yc, r) {
+    let x = 0;
+    let y = r;
+    let f = 1 - r;
+    let dx = 1;
+    let dy = -2 * r;
+
+    // Отрисовываем дугу (в данном случае верхнюю правую четверть дуги конического типа)
+    while (x <= y) {
+        drawPixel(xc + x, yc - y); // Дуга вверх-вправо
+        drawPixel(xc + y, yc - x); 
+        if (f >= 0) {
+            y--;
+            dy += 2;
+            f += dy;
+        }
+        x++;
+        dx += 2;
+        f += dx;
+    }
+}
+
+// === ОБРАБОТКА КЛИКОВ И ИНТЕРФЕЙС ===
+
+canvas.addEventListener('mousedown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    
+    const pixelX = Math.floor(mouseX / PIXEL_SIZE);
+    const pixelY = Math.floor(mouseY / PIXEL_SIZE);
+
+    points.push({x: pixelX, y: pixelY});
+    log(`Выбрана точка: (${pixelX}, ${pixelY})`);
+
+    // Подсвечиваем выбранные опорные точки красным
+    ctx.fillStyle = 'red';
+    ctx.fillRect(pixelX * PIXEL_SIZE, pixelY * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+
+    if (points.length === 2) {
+        const p1 = points[0];
+        const p2 = points[1];
+        const algo = algoSelect.value;
+
+        drawGrid(); // Сбрасываем сетку перед тестом алгоритма
+
+        log(`Запуск алгоритма: ${algo}`);
+        if (algo === 'step') drawStepByStep(p1.x, p1.y, p2.x, p2.y);
+        else if (algo === 'dda') drawDDA(p1.x, p1.y, p2.x, p2.y);
+        else if (algo === 'bresenham_line') drawBresenhamLine(p1.x, p1.y, p2.x, p2.y);
+        else if (algo === 'wu') drawWuLine(p1.x, p1.y, p2.x, p2.y);
+        else if (algo === 'bresenham_circle') {
+            let r = Math.round(Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2)));
+            drawBresenhamCircle(p1.x, p1.y, r);
+        }
+        else if (algo === 'castle_piteway') {
+            let r = Math.round(Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2)));
+            drawCastlePitewayArc(p1.x, p1.y, r);
+        }
+
+        points = []; // Сброс точек для следующего рисования
+    }
+});
+
+scaleInput.addEventListener('change', () => {
+    PIXEL_SIZE = parseInt(scaleInput.value);
+    drawGrid();
+});
+
+clearBtn.addEventListener('click', () => {
+    points = [];
+    drawGrid();
+    logDiv.innerHTML = "Холст очищен.";
+});
+
+// Инициализация
+drawGrid();
+</script>
+</body>
+</html>
