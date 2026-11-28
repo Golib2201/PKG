@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Лабораторная работа 5 — Алгоритмы отсечения</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <aside class="sidebar">
+    <h2>Лаб. работа №5</h2>
+    <p class="subtitle">Отсечение отрезков, многоугольников и Quadtree</p>
+
+    <div class="control-group">
+      <label>Режим работы:</label>
+      <select id="modeSelect">
+        <option value="cohen">Отрезки: Коэн — Сазерленд + Quadtree</option>
+        <option value="polygon">Многоугольник: Сазерленд — Ходжман</option>
+      </select>
+    </div>
+
+    <div class="control-group">
+      <label>Загрузить файл (.txt):</label>
+      <input type="file" id="fileInput" accept=".txt" />
+    </div>
+
+    <div class="control-group">
+      <label>Генерация (Big Data тест):</label>
+      <div class="row">
+        <input type="number" id="segmentCount" value="500000" min="10" max="2000000" step="10000" />
+        <button id="generateBtn">Сгенерировать</button>
+      </div>
+      <button id="animateBtn" class="secondary">Старт / Стоп динамики</button>
+    </div>
+
+    <div class="control-group">
+      <label>Отсекающее окно (Xmin, Ymin, Xmax, Ymax):</label>
+      <div class="grid-4">
+        <input type="number" id="xmin" value="-150" />
+        <input type="number" id="ymin" value="-100" />
+        <input type="number" id="xmax" value="150" />
+        <input type="number" id="ymax" value="100" />
+      </div>
+      <button id="applyWindowBtn">Применить окно</button>
+    </div>
+
+    <div class="control-group checkboxes">
+      <label><input type="checkbox" id="useQuadtree" checked /> Использовать Quadtree (O(log N))</label>
+      <label><input type="checkbox" id="showQuadtreeGrid" /> Показать сетку Quadtree</label>
+      <label><input type="checkbox" id="showOriginal" checked /> Показать исходные объекты</label>
+    </div>
+
+    <div class="stats" id="statsPanel">
+      <div>Всего объектов: <b id="statTotal">0</b></div>
+      <div>Проверено кандидатов: <b id="statChecked">0</b></div>
+      <div>Видимых сегментов: <b id="statVisible">0</b></div>
+      <div>Время отсечения: <b id="statTime">0 мс</b></div>
+    </div>
+
+    <div class="legend">
+      <div><span class="box window-color"></span> Отсекающее окно</div>
+      <div><span class="box orig-color"></span> Исходные отрезки / полигон</div>
+      <div><span class="box vis-color"></span> Видимая часть (результат)</div>
+    </div>
+  </aside>
+
+  <main class="canvas-container">
+    <canvas id="scene"></canvas>
+    <div class="hint">Колёсико мыши — масштаб | Перетаскивание ЛКМ — сдвиг | ПКМ + тянуть — задать окно</div>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
